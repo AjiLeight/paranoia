@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Copy, Skull, Heart, Spade, Diamond, Club } from 'lucide-react';
 import { useGame } from '../store/GameContext';
+import { AVATARS } from '../assets/avatars';
 
 const Suits = {
     hearts: <Heart className="fill-red-500 text-red-500" />,
@@ -30,9 +31,9 @@ export default function Room() {
 
     useEffect(() => {
         if (!me && sessionStorage.getItem('paranoia_id') === null) {
-            navigate('/');
+            navigate(`/?join=${roomId}`);
         }
-    }, [me, navigate]);
+    }, [me, navigate, roomId]);
 
     // Handle case where we were removed from the room (kicked/left/died)
     useEffect(() => {
@@ -181,11 +182,14 @@ export default function Room() {
                                 const askedAlready = myRequests.some(r => r.toId === p.id);
                                 return (
                                     <div key={p.id} className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl shadow-lg backdrop-blur-sm">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-10 h-10 rounded-lg bg-black/40 border border-white/5 flex items-center justify-center shadow-inner">
+                                        <div className="flex items-center gap-3 sm:gap-4">
+                                            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl overflow-hidden bg-slate-900 border border-white/10 flex items-center justify-center shadow-inner p-1">
+                                                <img src={`data:image/svg+xml;utf8,${encodeURIComponent(AVATARS[p.avatarIndex || 0])}`} className="w-full h-full object-contain" alt="Avatar" />
+                                            </div>
+                                            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-black/40 border border-white/5 flex items-center justify-center shadow-inner">
                                                 {p.symbol && Suits[p.symbol]}
                                             </div>
-                                            <span className="font-bold text-lg tracking-wide">{p.name} {p.role === 'jack' && me.role === 'jack' && <span className="text-xs text-red-500 ml-2">(Jack)</span>}</span>
+                                            <span className="font-bold text-base sm:text-lg tracking-wide">{p.name} {p.role === 'jack' && me.role === 'jack' && <span className="text-xs text-red-500 ml-2">(Jack)</span>}</span>
                                         </div>
                                         <button
                                             disabled={askedAlready}
@@ -276,7 +280,12 @@ export default function Room() {
                     <div className="text-lg max-h-60 overflow-y-auto pr-2 space-y-3">
                         {Object.values(room.players).map(p => (
                             <div key={p.id} className="flex justify-between items-center py-3 px-4 rounded-xl bg-black/40 border border-white/5 shadow-inner">
-                                <span className="font-bold text-slate-200 tracking-wide">{p.name} {p.id === me.id && <span className="text-xs text-slate-500 font-bold uppercase tracking-widest ml-3">You</span>}</span>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg overflow-hidden bg-slate-900 border border-white/10 flex items-center justify-center p-0.5">
+                                        <img src={`data:image/svg+xml;utf8,${encodeURIComponent(AVATARS[p.avatarIndex || 0])}`} className="w-full h-full object-contain" alt="Avatar" />
+                                    </div>
+                                    <span className="font-bold text-slate-200 tracking-wide">{p.name} {p.id === me.id && <span className="text-xs text-slate-500 font-bold uppercase tracking-widest ml-3">You</span>}</span>
+                                </div>
                                 {p.isHost && <span className="text-[10px] font-black text-red-500 bg-red-500/10 px-2 py-1 rounded uppercase tracking-widest border border-red-500/20">Host</span>}
                             </div>
                         ))}

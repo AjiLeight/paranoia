@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 export interface Player {
     id: string;
     name: string;
+    avatarIndex?: number;
     isHost: boolean;
     role?: 'player' | 'jack';
     symbol?: 'hearts' | 'spades' | 'diamonds' | 'clubs';
@@ -37,8 +38,8 @@ export interface Room {
 interface GameContextType {
     room: Room | null;
     me: Player | null;
-    createGame: (name: string, jacks: number, discTime: number) => Promise<string>;
-    joinGame: (name: string, roomId: string) => Promise<void>;
+    createGame: (name: string, avatarIndex: number, jacks: number, discTime: number) => Promise<string>;
+    joinGame: (name: string, avatarIndex: number, roomId: string) => Promise<void>;
     subscribeToRoom: (roomId: string) => void;
     startGame: () => Promise<void>;
     leaveGame: () => Promise<void>;
@@ -100,7 +101,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         return () => unsubscribe();
     }, [activeRoomId]);
 
-    const createGame = async (name: string, jacks: number, discTime: number) => {
+    const createGame = async (name: string, avatarIndex: number, jacks: number, discTime: number) => {
         try {
             const roomId = uuidv4().slice(0, 6).toUpperCase();
             const myId = sessionStorage.getItem('paranoia_id') || uuidv4();
@@ -116,12 +117,12 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
                 discussionTime: discTime,
                 votingTime: 30,
                 players: {
-                    [myId]: { id: myId, name, isHost: true, sessionToken }
+                    [myId]: { id: myId, name, avatarIndex, isHost: true, sessionToken }
                 }
             };
 
             await set(ref(db, `rooms/${roomId}`), newRoom);
-            setMe({ id: myId, name, isHost: true, sessionToken });
+            setMe({ id: myId, name, avatarIndex, isHost: true, sessionToken });
             setActiveRoomId(roomId);
             setError(null);
             return roomId;
@@ -131,7 +132,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         }
     };
 
-    const joinGame = async (name: string, roomId: string) => {
+    const joinGame = async (name: string, avatarIndex: number, roomId: string) => {
         try {
             const rId = roomId.toUpperCase();
             const snapshot = await get(ref(db, `rooms/${rId}`));
@@ -168,6 +169,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
             const playerData: any = {
                 id: myId,
                 name: cleanName,
+                avatarIndex,
                 isHost,
                 sessionToken
             };

@@ -1,27 +1,31 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useGame } from '../store/GameContext';
-import { Users, UserPlus, Play, Key } from 'lucide-react';
+import { Users, UserPlus, Play, Key, ChevronLeft, ChevronRight } from 'lucide-react';
+import { AVATARS } from '../assets/avatars';
 
 export default function Home() {
     const navigate = useNavigate();
     const { createGame, joinGame, error } = useGame();
+    const [searchParams] = useSearchParams();
+    const joinParam = searchParams.get('join');
 
     const [playerName, setPlayerName] = useState('');
+    const [avatarIndex, setAvatarIndex] = useState(0);
     const [mode, setMode] = useState<'initial' | 'create' | 'join'>('initial');
     const [loading, setLoading] = useState(false);
 
     // Room Settings
     const [jacksCount, setJacksCount] = useState(1);
     const [discussionTime, setDiscussionTime] = useState(60);
-    const [roomCode, setRoomCode] = useState('');
+    const [roomCode, setRoomCode] = useState(joinParam || '');
 
     const handleCreateRoom = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!playerName.trim()) return;
         try {
             setLoading(true);
-            const newRoomId = await createGame(playerName, jacksCount, discussionTime);
+            const newRoomId = await createGame(playerName, avatarIndex, jacksCount, discussionTime);
             navigate(`/room/${newRoomId}`);
         } catch (err) {
             console.error(err);
@@ -35,8 +39,21 @@ export default function Home() {
         if (!playerName.trim() || !roomCode.trim()) return;
         try {
             setLoading(true);
-            await joinGame(playerName, roomCode);
+            await joinGame(playerName, avatarIndex, roomCode);
             navigate(`/room/${roomCode.toUpperCase()}`);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDirectJoin = async () => {
+        if (!playerName.trim() || !joinParam) return;
+        try {
+            setLoading(true);
+            await joinGame(playerName, avatarIndex, joinParam);
+            navigate(`/room/${joinParam.toUpperCase()}`);
         } catch (err) {
             console.error(err);
         } finally {
@@ -70,6 +87,21 @@ export default function Home() {
                                 />
                             </div>
 
+                            <div className="space-y-2">
+                                <label className="text-xs font-semibold uppercase tracking-wider text-slate-400 ml-1">Select Avatar</label>
+                                <div className="flex items-center gap-4 bg-black/50 p-3 border border-white/10 rounded-lg justify-between shadow-inner">
+                                    <button type="button" onClick={() => setAvatarIndex(i => (i - 1 + AVATARS.length) % AVATARS.length)} className="p-2 hover:bg-white/10 rounded border border-transparent hover:border-white/10 text-slate-400 hover:text-white transition-all">
+                                        <ChevronLeft className="w-5 h-5" />
+                                    </button>
+                                    <div className="w-14 h-14 rounded-lg overflow-hidden bg-slate-900 border border-white/20 shadow-[0_0_15px_rgba(0,0,0,0.5)] flex items-center justify-center p-1">
+                                        <img src={`data:image/svg+xml;utf8,${encodeURIComponent(AVATARS[avatarIndex])}`} className="w-full h-full object-contain" alt="Avatar" />
+                                    </div>
+                                    <button type="button" onClick={() => setAvatarIndex(i => (i + 1) % AVATARS.length)} className="p-2 hover:bg-white/10 rounded border border-transparent hover:border-white/10 text-slate-400 hover:text-white transition-all">
+                                        <ChevronRight className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+
                             <div className="grid grid-cols-2 gap-4 pt-4">
                                 <button
                                     disabled={!playerName.trim()}
@@ -81,11 +113,11 @@ export default function Home() {
                                 </button>
                                 <button
                                     disabled={!playerName.trim()}
-                                    onClick={() => setMode('join')}
+                                    onClick={() => joinParam ? handleDirectJoin() : setMode('join')}
                                     className="flex flex-col items-center justify-center gap-3 p-4 rounded-xl bg-gradient-to-br from-blue-600/20 to-blue-900/20 border border-blue-500/30 hover:border-blue-500 hover:bg-blue-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed group text-blue-100"
                                 >
                                     <UserPlus className="w-8 h-8 group-hover:scale-110 transition-transform text-blue-400" />
-                                    <span className="font-semibold tracking-wide text-sm">Join Room</span>
+                                    <span className="font-semibold tracking-wide text-sm">{joinParam ? `Join ${joinParam}` : 'Join Room'}</span>
                                 </button>
                             </div>
                         </div>
