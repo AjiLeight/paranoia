@@ -89,18 +89,23 @@ export default function Room() {
 
     // VIEWS
     if (room.status === 'finished') {
+        const isVictory = (room.winner === 'players' && me.role === 'player') || (room.winner === 'jacks' && me.role === 'jack');
         return (
             <div className="flex flex-col items-center justify-center min-h-[100dvh] p-6 bg-slate-950">
-                <div className="bg-white/5 backdrop-blur-xl p-8 rounded-2xl text-center border border-white/10 shadow-2xl max-w-md w-full animate-in zoom-in-95">
-                    <h1 className="text-4xl font-black text-red-500 mb-6 uppercase tracking-widest">Game Over</h1>
-                    <p className="text-xl text-slate-200 mb-8 font-bold uppercase tracking-[0.2em]">
+                <div className={`bg-white/5 backdrop-blur-xl p-8 rounded-3xl text-center border shadow-2xl max-w-md w-full animate-in zoom-in-95 duration-1000 ${isVictory ? 'border-green-500/30 shadow-[0_0_50px_rgba(34,197,94,0.15)]' : 'border-red-500/30 shadow-[0_0_50px_rgba(220,38,38,0.15)]'}`}>
+                    <h1 className={`text-4xl sm:text-5xl font-black mb-6 uppercase tracking-widest ${isVictory ? 'text-green-500 drop-shadow-[0_0_15px_rgba(34,197,94,0.5)]' : 'text-red-500 drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]'}`}>
+                        {isVictory ? 'Victory' : 'Game Over'}
+                    </h1>
+                    <p className={`text-lg sm:text-xl mb-10 font-black uppercase tracking-[0.2em] ${isVictory ? 'text-green-400' : 'text-red-400'}`}>
                         {room.winner === 'players' ? 'THE PLAYERS SURVIVED' : 'THE JACK OF HEARTS WINS'}
                     </p>
-                    {me.isHost ? (
-                        <button onClick={cancelGame} className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-4 rounded-lg">DISMANTLE FACILITY</button>
-                    ) : (
-                        <button onClick={leaveGame} className="w-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold py-3 px-4 rounded-lg">LEAVE FACILITY</button>
-                    )}
+                    <div className="space-y-4">
+                        {me.isHost ? (
+                            <button onClick={cancelGame} className="w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 px-4 rounded-xl transition-all uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:shadow-[0_0_30px_rgba(220,38,38,0.6)] text-xs sm:text-sm">DISMANTLE FACILITY</button>
+                        ) : (
+                            <button onClick={leaveGame} className="w-full bg-transparent border border-white/20 text-slate-400 hover:bg-white/10 hover:text-white font-bold py-4 px-4 rounded-xl transition-colors uppercase tracking-[0.2em] text-xs sm:text-sm">LEAVE FACILITY</button>
+                        )}
+                    </div>
                 </div>
             </div>
         );
@@ -280,7 +285,13 @@ export default function Room() {
 
                 {me.isHost ? (
                     <div className="mt-10 space-y-3">
-                        <button onClick={startGame} className="w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 px-4 rounded-xl transition-all uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:shadow-[0_0_30px_rgba(220,38,38,0.6)]">Commence Event</button>
+                        <button
+                            onClick={startGame}
+                            disabled={Object.keys(room.players).length < 4}
+                            className="w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 px-4 rounded-xl transition-all uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:shadow-[0_0_30px_rgba(220,38,38,0.6)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-red-600 disabled:hover:shadow-[0_0_20px_rgba(220,38,38,0.4)]"
+                        >
+                            {Object.keys(room.players).length < 4 ? `Need ${4 - Object.keys(room.players).length} More` : 'Commence Event'}
+                        </button>
                         <button onClick={cancelGame} className="w-full bg-transparent border border-white/10 text-slate-400 hover:bg-white/5 hover:text-white font-bold py-4 px-4 rounded-xl transition-colors uppercase tracking-[0.2em] text-sm">Dismantle Room</button>
                     </div>
                 ) : (

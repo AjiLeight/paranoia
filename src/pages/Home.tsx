@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useGame } from '../store/GameContext';
 import { Users, UserPlus, Play, Key } from 'lucide-react';
 
@@ -156,6 +156,12 @@ export default function Home() {
                     )}
 
                 </div>
+            </div>
+
+            <div className="mt-8 text-center animate-in fade-in duration-1000 delay-500">
+                <Link to="/rules" className="text-slate-400 hover:text-white uppercase tracking-[0.2em] font-bold text-xs sm:text-sm border-b border-white/20 hover:border-white/50 pb-1 transition-all">
+                    How to Play
+                </Link>
             </div>
         </div>
     );
