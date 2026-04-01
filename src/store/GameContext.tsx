@@ -8,6 +8,7 @@ export interface Player {
     name: string;
     avatarIndex?: number;
     isHost: boolean;
+    isApproved?: boolean;
     role?: 'player' | 'jack';
     symbol?: 'hearts' | 'spades' | 'diamonds' | 'clubs';
     sessionToken?: string;
@@ -24,6 +25,7 @@ export interface GameRequest {
 
 export interface Room {
     id: string;
+    isPublic?: boolean;
     status: 'waiting' | 'discussion' | 'voting' | 'finished';
     jacksCount: number;
     discussionTime: number;
@@ -38,8 +40,10 @@ export interface Room {
 interface GameContextType {
     room: Room | null;
     me: Player | null;
-    createGame: (name: string, avatarIndex: number, jacks: number, discTime: number) => Promise<string>;
+    createGame: (name: string, avatarIndex: number, jacks: number, discTime: number, isPublic?: boolean) => Promise<string>;
     joinGame: (name: string, avatarIndex: number, roomId: string) => Promise<void>;
+    approvePlayer: (playerId: string) => Promise<void>;
+    rejectPlayer: (playerId: string) => Promise<void>;
     subscribeToRoom: (roomId: string) => void;
     startGame: () => Promise<void>;
     leaveGame: () => Promise<void>;
@@ -101,7 +105,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         return () => unsubscribe();
     }, [activeRoomId]);
 
-    const createGame = async (name: string, avatarIndex: number, jacks: number, discTime: number) => {
+    const createGame = async (name: string, avatarIndex: number, jacks: number, discTime: number, isPublic: boolean = false) => {
         try {
             const roomId = uuidv4().slice(0, 6).toUpperCase();
             const myId = sessionStorage.getItem('paranoia_id') || uuidv4();
@@ -112,17 +116,18 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
             const newRoom: Room = {
                 id: roomId,
+                isPublic,
                 status: 'waiting',
                 jacksCount: jacks,
                 discussionTime: discTime,
                 votingTime: 30,
                 players: {
-                    [myId]: { id: myId, name, avatarIndex, isHost: true, sessionToken }
+                    [myId]: { id: myId, name, avatarIndex, isHost: true, isApproved: true, sessionToken }
                 }
             };
 
             await set(ref(db, `rooms/${roomId}`), newRoom);
-            setMe({ id: myId, name, avatarIndex, isHost: true, sessionToken });
+            setMe({ id: myId, name, avatarIndex, isHost: true, isApproved: true, sessionToken });
             setActiveRoomId(roomId);
             setError(null);
             return roomId;
@@ -171,11 +176,13 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
                 name: cleanName,
                 avatarIndex,
                 isHost,
+                isApproved: isHost ? true : false,
                 sessionToken
             };
 
             if (existingPlayer?.role) playerData.role = existingPlayer.role;
             if (existingPlayer?.symbol) playerData.symbol = existingPlayer.symbol;
+            if (existingPlayer?.isApproved !== undefined) playerData.isApproved = existingPlayer.isApproved;
 
             await update(ref(db, `rooms/${rId}/players/${myId}`), playerData);
 
@@ -216,14 +223,41 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         }
     };
 
+    const approvePlayer = async (playerId: string) => {
+        if (!room || !me?.isHost) return;
+        try {
+            await update(ref(db, `rooms/${room.id}/players/${playerId}`), { isApproved: true });
+        } catch (e: any) {
+            setError(e.message || "Could not approve player.");
+            throw e;
+        }
+    };
+
+    const rejectPlayer = async (playerId: string) => {
+        if (!room || !me?.isHost) return;
+        try {
+            await remove(ref(db, `rooms/${room.id}/players/${playerId}`));
+        } catch (e: any) {
+            setError(e.message || "Could not reject player.");
+            throw e;
+        }
+    };
+
     const startGame = async () => {
         if (!room || !me?.isHost) return;
         try {
-            const playerIds = Object.keys(room.players);
+            const approvedPlayers = Object.values(room.players).filter(p => p.isApproved);
+            const playerIds = approvedPlayers.map(p => p.id);
             const shuffledIds = [...playerIds].sort(() => Math.random() - 0.5);
 
             const updates: Record<string, any> = {};
             const symbols = ['hearts', 'spades', 'diamonds', 'clubs'] as const;
+
+            Object.values(room.players).forEach(p => {
+                if (!p.isApproved) {
+                    updates[`rooms/${room.id}/players/${p.id}`] = null;
+                }
+            });
 
             shuffledIds.forEach((pId, idx) => {
                 const isJack = idx < room.jacksCount;
@@ -322,7 +356,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <GameContext.Provider value={{ room, me, createGame, joinGame, subscribeToRoom, startGame, leaveGame, cancelGame, sendRequest, replyRequest, submitVote, advanceToVoting, resolveRound, error }}>
+        <GameContext.Provider value={{ room, me, createGame, joinGame, approvePlayer, rejectPlayer, subscribeToRoom, startGame, leaveGame, cancelGame, sendRequest, replyRequest, submitVote, advanceToVoting, resolveRound, error }}>
             {children}
         </GameContext.Provider>
     );

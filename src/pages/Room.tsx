@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Copy, Skull, Heart, Spade, Diamond, Club } from 'lucide-react';
+import { Copy, Skull, Heart, Spade, Diamond, Club, UserPlus, Check, X } from 'lucide-react';
 import { useGame } from '../store/GameContext';
 import { AVATARS } from '../assets/avatars';
 
@@ -14,7 +14,7 @@ const Suits = {
 export default function Room() {
     const { roomId } = useParams();
     const navigate = useNavigate();
-    const { me, room, subscribeToRoom, startGame, leaveGame, cancelGame, sendRequest, replyRequest, submitVote, advanceToVoting, resolveRound, error } = useGame();
+    const { me, room, subscribeToRoom, startGame, leaveGame, cancelGame, sendRequest, replyRequest, submitVote, advanceToVoting, resolveRound, error, approvePlayer, rejectPlayer } = useGame();
     const [timeLeft, setTimeLeft] = useState(0);
     const [localVote, setLocalVote] = useState<'hearts' | 'spades' | 'diamonds' | 'clubs' | null>(null);
 
@@ -82,6 +82,28 @@ export default function Room() {
     if (!me || !room) return (
         <div className="min-h-[100dvh] flex items-center justify-center bg-slate-950 text-white">Loading Lobby...</div>
     );
+
+    if (!me.isHost && me.isApproved === false) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[100dvh] p-6 bg-slate-950 text-slate-400 text-center">
+                <div className="animate-pulse mb-6">
+                    <UserPlus className="w-16 h-16 text-slate-600 mx-auto" />
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2 uppercase tracking-widest">Awaiting Clearance</h2>
+                <p className="max-w-xs mx-auto mb-8">The host must approve your request to join this operation.</p>
+                <button
+                    onClick={() => {
+                        leaveGame();
+                        sessionStorage.removeItem('paranoia_id');
+                        navigate('/');
+                    }}
+                    className="text-sm uppercase tracking-wider text-slate-500 hover:text-white transition-colors border-b border-transparent hover:border-white pb-1"
+                >
+                    Cancel Request
+                </button>
+            </div>
+        );
+    }
 
     const playersArr = Object.values(room.players);
     const alivePlayers = playersArr.filter(p => !p.isDead && p.id !== me.id);
@@ -257,6 +279,9 @@ export default function Room() {
     }
 
     // LOBBY VIEW (waiting)
+    const approvedJoiners = Object.values(room.players).filter(p => p.isApproved);
+    const pendingJoiners = Object.values(room.players).filter(p => !p.isApproved);
+
     return (
         <div className="flex flex-col items-center justify-center min-h-[100dvh] p-4 sm:p-6 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black">
             <h1 className="text-3xl sm:text-4xl font-black text-red-500 mb-6 tracking-[0.2em]">LOBBY</h1>
@@ -275,10 +300,10 @@ export default function Room() {
                 <div className="text-left space-y-4">
                     <div className="flex justify-between items-end border-b border-white/10 pb-3">
                         <h2 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em]">Subjects Enrolled</h2>
-                        <span className="text-sm text-red-400 font-black tracking-widest">{Object.keys(room.players).length} ONLINE</span>
+                        <span className="text-sm text-red-400 font-black tracking-widest">{approvedJoiners.length} ONLINE</span>
                     </div>
-                    <div className="text-lg max-h-60 overflow-y-auto pr-2 space-y-3">
-                        {Object.values(room.players).map(p => (
+                    <div className="text-lg max-h-40 overflow-y-auto pr-2 space-y-3">
+                        {approvedJoiners.map(p => (
                             <div key={p.id} className="flex justify-between items-center py-3 px-4 rounded-xl bg-black/40 border border-white/5 shadow-inner">
                                 <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 rounded-lg overflow-hidden bg-slate-900 border border-white/10 flex items-center justify-center p-0.5">
@@ -292,14 +317,43 @@ export default function Room() {
                     </div>
                 </div>
 
+                {me.isHost && pendingJoiners.length > 0 && (
+                    <div className="text-left space-y-4 mt-6">
+                        <div className="flex justify-between items-end border-b border-orange-500/30 pb-3">
+                            <h2 className="text-sm font-black text-orange-400 uppercase tracking-[0.2em]">Pending Requests</h2>
+                            <span className="text-sm text-orange-400 font-black tracking-widest">{pendingJoiners.length} WAITING</span>
+                        </div>
+                        <div className="text-lg max-h-40 overflow-y-auto pr-2 space-y-3">
+                            {pendingJoiners.map(p => (
+                                <div key={p.id} className="flex justify-between items-center py-3 px-4 rounded-xl bg-orange-500/10 border border-orange-500/20 shadow-inner">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-lg overflow-hidden bg-slate-900 border border-orange-500/20 flex items-center justify-center p-0.5 opacity-80">
+                                            <img src={`data:image/svg+xml;utf8,${encodeURIComponent(AVATARS[p.avatarIndex || 0])}`} className="w-full h-full object-contain" alt="Avatar" />
+                                        </div>
+                                        <span className="font-bold text-orange-200 tracking-wide">{p.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => approvePlayer(p.id)} className="p-2 bg-green-500/20 hover:bg-green-500/40 text-green-400 rounded-lg transition-colors border border-green-500/30">
+                                            <Check className="w-4 h-4" />
+                                        </button>
+                                        <button onClick={() => rejectPlayer(p.id)} className="p-2 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-lg transition-colors border border-red-500/30">
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {me.isHost ? (
-                    <div className="mt-10 space-y-3">
+                    <div className="mt-8 space-y-3">
                         <button
                             onClick={startGame}
-                            disabled={Object.keys(room.players).length < 4}
+                            disabled={approvedJoiners.length < 4}
                             className="w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 px-4 rounded-xl transition-all uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:shadow-[0_0_30px_rgba(220,38,38,0.6)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-red-600 disabled:hover:shadow-[0_0_20px_rgba(220,38,38,0.4)]"
                         >
-                            {Object.keys(room.players).length < 4 ? `Need ${4 - Object.keys(room.players).length} More` : 'Commence Event'}
+                            {approvedJoiners.length < 4 ? `Need ${4 - approvedJoiners.length} More` : 'Commence Event'}
                         </button>
                         <button onClick={cancelGame} className="w-full bg-transparent border border-white/10 text-slate-400 hover:bg-white/5 hover:text-white font-bold py-4 px-4 rounded-xl transition-colors uppercase tracking-[0.2em] text-sm">Dismantle Room</button>
                     </div>

@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { useGame } from '../store/GameContext';
-import { Users, UserPlus, Play, Key, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useGame, type Room } from '../store/GameContext';
+import { Users, UserPlus, Play, Key, ChevronLeft, ChevronRight, Globe, Lock } from 'lucide-react';
 import { AVATARS } from '../assets/avatars';
+import { ref, onValue } from 'firebase/database';
+import { db } from '../lib/firebase';
 
 export default function Home() {
     const navigate = useNavigate();
@@ -12,20 +14,38 @@ export default function Home() {
 
     const [playerName, setPlayerName] = useState('');
     const [avatarIndex, setAvatarIndex] = useState(0);
-    const [mode, setMode] = useState<'initial' | 'create' | 'join'>('initial');
+    const [mode, setMode] = useState<'initial' | 'create' | 'join' | 'public'>('initial');
     const [loading, setLoading] = useState(false);
 
     // Room Settings
     const [jacksCount, setJacksCount] = useState(1);
     const [discussionTime, setDiscussionTime] = useState(60);
+    const [isPublic, setIsPublic] = useState(true);
     const [roomCode, setRoomCode] = useState(joinParam || '');
+    const [publicRoomsList, setPublicRoomsList] = useState<Room[]>([]);
+
+    useEffect(() => {
+        if (mode !== 'public') return;
+        const roomsRef = ref(db, 'rooms');
+        const unsubscribe = onValue(roomsRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                const roomsArray = Object.values(data) as Room[];
+                const waitingPublic = roomsArray.filter(r => r.isPublic && r.status === 'waiting');
+                setPublicRoomsList(waitingPublic);
+            } else {
+                setPublicRoomsList([]);
+            }
+        });
+        return () => unsubscribe();
+    }, [mode]);
 
     const handleCreateRoom = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!playerName.trim()) return;
         try {
             setLoading(true);
-            const newRoomId = await createGame(playerName, avatarIndex, jacksCount, discussionTime);
+            const newRoomId = await createGame(playerName, avatarIndex, jacksCount, discussionTime, isPublic);
             navigate(`/room/${newRoomId}`);
         } catch (err) {
             console.error(err);
@@ -68,7 +88,7 @@ export default function Home() {
                     <h1 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-red-600 to-red-400 mb-2 filter drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]">
                         PARANOIA
                     </h1>
-                    <p className="text-slate-400 text-xs sm:text-sm tracking-widest uppercase">Trust no one.</p>
+                    <p className="text-slate-400 text-xs sm:text-sm tracking-widest uppercase">For TIGMA PEEPS , BY AJI.</p>
                 </div>
 
                 <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-2xl shadow-2xl">
@@ -117,9 +137,19 @@ export default function Home() {
                                     className="flex flex-col items-center justify-center gap-3 p-4 rounded-xl bg-gradient-to-br from-blue-600/20 to-blue-900/20 border border-blue-500/30 hover:border-blue-500 hover:bg-blue-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed group text-blue-100"
                                 >
                                     <UserPlus className="w-8 h-8 group-hover:scale-110 transition-transform text-blue-400" />
-                                    <span className="font-semibold tracking-wide text-sm">{joinParam ? `Join ${joinParam}` : 'Join Room'}</span>
+                                    <span className="font-semibold tracking-wide text-sm">{joinParam ? `Join ${joinParam}` : 'Join Private'}</span>
                                 </button>
                             </div>
+                            {!joinParam && (
+                                <button
+                                    disabled={!playerName.trim()}
+                                    onClick={() => setMode('public')}
+                                    className="w-full flex items-center justify-center gap-3 p-4 rounded-xl bg-white/5 border border-white/10 hover:border-white/30 hover:bg-white/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-white uppercase tracking-widest text-sm font-bold mt-4"
+                                >
+                                    <Globe className="w-5 h-5" />
+                                    Browse Public Rooms
+                                </button>
+                            )}
                         </div>
                     )}
 
@@ -133,6 +163,17 @@ export default function Home() {
                             </div>
 
                             <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-400 ml-1">Visibility</label>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <button type="button" onClick={() => setIsPublic(true)} className={`p-3 rounded-lg border text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${isPublic ? 'bg-red-500/20 border-red-500 text-red-400' : 'bg-black/50 border-white/10 text-slate-400 hover:border-white/30'}`}>
+                                            <Globe className="w-4 h-4" /> Public
+                                        </button>
+                                        <button type="button" onClick={() => setIsPublic(false)} className={`p-3 rounded-lg border text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${!isPublic ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-black/50 border-white/10 text-slate-400 hover:border-white/30'}`}>
+                                            <Lock className="w-4 h-4" /> Private
+                                        </button>
+                                    </div>
+                                </div>
                                 <div className="space-y-2">
                                     <label className="text-xs font-semibold uppercase tracking-wider text-slate-400 ml-1">Number of Jacks</label>
                                     <input
@@ -185,6 +226,55 @@ export default function Home() {
                                 {loading ? 'Entering...' : 'Enter Room'}
                             </button>
                         </form>
+                    )}
+
+                    {mode === 'public' && (
+                        <div className="space-y-6 animate-in slide-in-from-right-4 fade-in duration-300 relative">
+                            <div className="flex items-center gap-4 mb-6">
+                                <button type="button" onClick={() => setMode('initial')} className="text-slate-400 hover:text-white text-sm">
+                                    ← Back
+                                </button>
+                                <h2 className="text-xl font-bold flex items-center gap-2"><Globe className="w-6 h-6" /> Public Rooms</h2>
+                            </div>
+
+                            <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+                                {publicRoomsList.length === 0 ? (
+                                    <div className="text-center p-8 border border-dashed border-white/10 rounded-xl text-slate-500">
+                                        No public rooms available right now.
+                                    </div>
+                                ) : (
+                                    publicRoomsList.map(r => (
+                                        <div key={r.id} className="bg-black/40 border border-white/10 p-4 rounded-xl flex items-center justify-between hover:bg-white/5 transition-colors">
+                                            <div>
+                                                <div className="font-mono text-lg font-bold text-slate-200 tracking-wider mb-1">ROOM {r.id}</div>
+                                                <div className="text-xs text-slate-400 flex items-center gap-3">
+                                                    <Users className="w-3 h-3" /> {Object.keys(r.players || {}).length} Players
+                                                    <span>•</span>
+                                                    <span>{r.jacksCount} Jack{r.jacksCount !== 1 ? 's' : ''}</span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                disabled={loading}
+                                                onClick={async () => {
+                                                    setLoading(true);
+                                                    try {
+                                                        await joinGame(playerName, avatarIndex, r.id);
+                                                        navigate(`/room/${r.id}`);
+                                                    } catch (e) {
+                                                        console.error(e);
+                                                    } finally {
+                                                        setLoading(false);
+                                                    }
+                                                }}
+                                                className="bg-red-500/20 hover:bg-red-500/40 border border-red-500/30 text-red-300 px-4 py-2 rounded-lg font-bold text-sm tracking-wider uppercase transition-colors"
+                                            >
+                                                Join
+                                            </button>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
                     )}
 
                 </div>
