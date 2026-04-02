@@ -12,17 +12,27 @@ export default function Home() {
     const [searchParams] = useSearchParams();
     const joinParam = searchParams.get('join');
 
-    const [playerName, setPlayerName] = useState('');
-    const [avatarIndex, setAvatarIndex] = useState(0);
+    const [playerName, setPlayerName] = useState(() => localStorage.getItem('trustNone_playerName') || '');
+    const [avatarIndex, setAvatarIndex] = useState(() => parseInt(localStorage.getItem('trustNone_avatarIndex') || '0', 10));
     const [mode, setMode] = useState<'initial' | 'create' | 'join' | 'public'>('initial');
     const [loading, setLoading] = useState(false);
 
     // Room Settings
     const [jacksCount, setJacksCount] = useState(1);
     const [discussionTime, setDiscussionTime] = useState(60);
+    const [sdRounds, setSdRounds] = useState(5);
     const [isPublic, setIsPublic] = useState(true);
     const [roomCode, setRoomCode] = useState(joinParam || '');
     const [publicRoomsList, setPublicRoomsList] = useState<Room[]>([]);
+    const [gameType, setGameType] = useState<'paranoia' | 'shadow-duel'>('paranoia');
+
+    useEffect(() => {
+        localStorage.setItem('trustNone_playerName', playerName);
+    }, [playerName]);
+
+    useEffect(() => {
+        localStorage.setItem('trustNone_avatarIndex', avatarIndex.toString());
+    }, [avatarIndex]);
 
     useEffect(() => {
         if (mode !== 'public') return;
@@ -45,7 +55,7 @@ export default function Home() {
         if (!playerName.trim()) return;
         try {
             setLoading(true);
-            const newRoomId = await createGame(playerName, avatarIndex, jacksCount, discussionTime, isPublic);
+            const newRoomId = await createGame(playerName, avatarIndex, jacksCount, discussionTime, isPublic, gameType, sdRounds);
             navigate(`/room/${newRoomId}`);
         } catch (err) {
             console.error(err);
@@ -76,6 +86,8 @@ export default function Home() {
             navigate(`/room/${joinParam.toUpperCase()}`);
         } catch (err) {
             console.error(err);
+            navigate('/', { replace: true });
+            setRoomCode('');
         } finally {
             setLoading(false);
         }
@@ -86,7 +98,7 @@ export default function Home() {
             <div className="max-w-md w-full space-y-8">
                 <div className="text-center">
                     <h1 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-red-600 to-red-400 mb-2 filter drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]">
-                        PARANOIA
+                        Fun@TM
                     </h1>
                     <p className="text-slate-400 text-xs sm:text-sm tracking-widest uppercase">For TIGMA PEEPS , BY AJI.</p>
                 </div>
@@ -164,6 +176,17 @@ export default function Home() {
 
                             <div className="space-y-4">
                                 <div className="space-y-2">
+                                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-400 ml-1">Game Type</label>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <button type="button" onClick={() => setGameType('paranoia')} className={`p-3 rounded-lg border text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${gameType === 'paranoia' ? 'bg-red-500/20 border-red-500 text-red-400' : 'bg-black/50 border-white/10 text-slate-400 hover:border-white/30'}`}>
+                                            Paranoia
+                                        </button>
+                                        <button type="button" onClick={() => setGameType('shadow-duel')} className={`p-3 rounded-lg border text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${gameType === 'shadow-duel' ? 'bg-purple-500/20 border-purple-500 text-purple-400' : 'bg-black/50 border-white/10 text-slate-400 hover:border-white/30'}`}>
+                                            Shadow Duel
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
                                     <label className="text-xs font-semibold uppercase tracking-wider text-slate-400 ml-1">Visibility</label>
                                     <div className="grid grid-cols-2 gap-4">
                                         <button type="button" onClick={() => setIsPublic(true)} className={`p-3 rounded-lg border text-sm font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${isPublic ? 'bg-red-500/20 border-red-500 text-red-400' : 'bg-black/50 border-white/10 text-slate-400 hover:border-white/30'}`}>
@@ -174,14 +197,26 @@ export default function Home() {
                                         </button>
                                     </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-400 ml-1">Number of Jacks</label>
-                                    <input
-                                        type="number" min="1" max="10"
-                                        value={jacksCount} onChange={e => setJacksCount(Number(e.target.value))}
-                                        className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-red-500/50"
-                                    />
-                                </div>
+                                {gameType === 'paranoia' && (
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-semibold uppercase tracking-wider text-slate-400 ml-1">Number of Jacks</label>
+                                        <input
+                                            type="number" min="1" max="10"
+                                            value={jacksCount} onChange={e => setJacksCount(Number(e.target.value))}
+                                            className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                                        />
+                                    </div>
+                                )}
+                                {gameType === 'shadow-duel' && (
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-semibold uppercase tracking-wider text-slate-400 ml-1">Number of Turns (Max 10)</label>
+                                        <input
+                                            type="number" min="1" max="10"
+                                            value={sdRounds} onChange={e => setSdRounds(Number(e.target.value))}
+                                            className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                                        />
+                                    </div>
+                                )}
                                 <div className="space-y-2">
                                     <label className="text-xs font-semibold uppercase tracking-wider text-slate-400 ml-1">Discussion Time (sec)</label>
                                     <input
@@ -248,9 +283,16 @@ export default function Home() {
                                             <div>
                                                 <div className="font-mono text-lg font-bold text-slate-200 tracking-wider mb-1">ROOM {r.id}</div>
                                                 <div className="text-xs text-slate-400 flex items-center gap-3">
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${r.gameType === 'shadow-duel' ? 'bg-purple-500/20 text-purple-300' : 'bg-red-500/20 text-red-300'}`}>
+                                                        {r.gameType === 'shadow-duel' ? 'Shadow Duel' : 'Paranoia'}
+                                                    </span>
                                                     <Users className="w-3 h-3" /> {Object.keys(r.players || {}).length} Players
-                                                    <span>•</span>
-                                                    <span>{r.jacksCount} Jack{r.jacksCount !== 1 ? 's' : ''}</span>
+                                                    {(r.gameType === 'paranoia' || !r.gameType) && (
+                                                        <>
+                                                            <span>•</span>
+                                                            <span>{r.jacksCount} Jack{r.jacksCount !== 1 ? 's' : ''}</span>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
                                             <button

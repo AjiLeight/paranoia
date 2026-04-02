@@ -14,6 +14,10 @@ export interface Player {
     sessionToken?: string;
     isDead?: boolean;
     selectedSymbol?: 'hearts' | 'spades' | 'diamonds' | 'clubs';
+    sdRole?: 'human' | 'zombie';
+    sdCards?: string[];
+    sdLockedCard?: string;
+    sdDuelResult?: any;
 }
 
 export interface GameRequest {
@@ -26,21 +30,24 @@ export interface GameRequest {
 export interface Room {
     id: string;
     isPublic?: boolean;
-    status: 'waiting' | 'discussion' | 'voting' | 'finished';
+    gameType?: 'paranoia' | 'shadow-duel';
+    status: 'waiting' | 'discussion' | 'voting' | 'finished' | 'sd_lock_in' | 'sd_resolution' | 'sd_interrogation';
     jacksCount: number;
     discussionTime: number;
     votingTime: number;
     discussionEndTime?: number;
     votingEndTime?: number;
-    winner?: 'jacks' | 'players';
+    winner?: 'jacks' | 'players' | 'humans' | 'zombies';
     players: Record<string, Player>;
     requests?: Record<string, GameRequest>;
+    sdCurrentRound?: number;
+    sdTotalRounds?: number;
 }
 
 interface GameContextType {
     room: Room | null;
     me: Player | null;
-    createGame: (name: string, avatarIndex: number, jacks: number, discTime: number, isPublic?: boolean) => Promise<string>;
+    createGame: (name: string, avatarIndex: number, jacks: number, discTime: number, isPublic?: boolean, gameType?: 'paranoia' | 'shadow-duel', sdRounds?: number) => Promise<string>;
     joinGame: (name: string, avatarIndex: number, roomId: string) => Promise<void>;
     approvePlayer: (playerId: string) => Promise<void>;
     rejectPlayer: (playerId: string) => Promise<void>;
@@ -105,7 +112,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         return () => unsubscribe();
     }, [activeRoomId]);
 
-    const createGame = async (name: string, avatarIndex: number, jacks: number, discTime: number, isPublic: boolean = false) => {
+    const createGame = async (name: string, avatarIndex: number, jacks: number, discTime: number, isPublic: boolean = false, gameType: 'paranoia' | 'shadow-duel' = 'paranoia', sdRounds: number = 5) => {
         try {
             const roomId = uuidv4().slice(0, 6).toUpperCase();
             const myId = sessionStorage.getItem('paranoia_id') || uuidv4();
@@ -117,10 +124,12 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
             const newRoom: Room = {
                 id: roomId,
                 isPublic,
+                gameType,
                 status: 'waiting',
                 jacksCount: jacks,
                 discussionTime: discTime,
                 votingTime: 30,
+                sdTotalRounds: sdRounds,
                 players: {
                     [myId]: { id: myId, name, avatarIndex, isHost: true, isApproved: true, sessionToken }
                 }

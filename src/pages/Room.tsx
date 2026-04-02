@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Copy, Skull, Heart, Spade, Diamond, Club, UserPlus, Check, X } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { useGame } from '../store/GameContext';
+import { useShadowDuel } from '../store/ShadowDuelContext';
+import { ShadowDuelCard, cn } from '../components/ShadowDuelCard';
 import { AVATARS } from '../assets/avatars';
 
 const Suits = {
@@ -11,10 +14,54 @@ const Suits = {
     clubs: <Club className="fill-slate-800 text-slate-800" />
 };
 
+function FanHand({ cards, onSelect, disabled }: { cards: string[], onSelect?: (card: string) => void, disabled?: boolean }) {
+    const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+    const n = cards.length;
+    const arcSpread = Math.min(70, n * 8);
+    const cardW = 80;
+    const cardH = 112;
+    const containerH = cardH + 60;
+
+    return (
+        <div className="relative mx-auto" style={{ width: Math.max(300, n * 42 + cardW), height: containerH + 20 }}>
+            {cards.map((card, idx) => {
+                const frac = n === 1 ? 0 : (idx / (n - 1)) - 0.5;
+                const rotate = arcSpread * frac;
+                const yOffset = Math.pow(frac * 2, 2) * 28;
+                const isHovered = hoveredIdx === idx;
+                return (
+                    <motion.div
+                        key={card + idx}
+                        initial={{ opacity: 0, y: 60 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.06 }}
+                        onHoverStart={() => setHoveredIdx(idx)}
+                        onHoverEnd={() => setHoveredIdx(null)}
+                        className="absolute bottom-0"
+                        style={{
+                            left: `calc(50% + ${(idx - (n - 1) / 2) * 40}px - ${cardW / 2}px)`,
+                            transformOrigin: '50% 160%',
+                            rotate: `${rotate}deg`,
+                            translateY: isHovered ? -28 : yOffset,
+                            zIndex: isHovered ? 100 : idx,
+                            cursor: disabled ? 'default' : 'pointer',
+                            transition: 'translate 0.15s ease'
+                        }}
+                        onClick={() => !disabled && onSelect?.(card)}
+                    >
+                        <ShadowDuelCard cardId={card} disabled={disabled} className="w-20 h-28 shadow-xl" />
+                    </motion.div>
+                );
+            })}
+        </div>
+    );
+}
+
 export default function Room() {
     const { roomId } = useParams();
     const navigate = useNavigate();
     const { me, room, subscribeToRoom, startGame, leaveGame, cancelGame, sendRequest, replyRequest, submitVote, advanceToVoting, resolveRound, error, approvePlayer, rejectPlayer } = useGame();
+    const { startSDGame, startSDRound, lockInCard, resolveSDRound, startInterrogation } = useShadowDuel();
     const [timeLeft, setTimeLeft] = useState(0);
     const [localVote, setLocalVote] = useState<'hearts' | 'spades' | 'diamonds' | 'clubs' | null>(null);
 
@@ -63,6 +110,10 @@ export default function Room() {
                 targetTime = room.votingEndTime;
             }
 
+            if (room.status === 'sd_lock_in' && room.votingEndTime) targetTime = room.votingEndTime;
+            if (room.status === 'sd_resolution' && room.votingEndTime) targetTime = room.votingEndTime;
+            if (room.status === 'sd_interrogation' && room.discussionEndTime) targetTime = room.discussionEndTime;
+
             if (targetTime > 0) {
                 const remaining = Math.max(0, Math.floor((targetTime - Date.now()) / 1000));
                 setTimeLeft(remaining);
@@ -72,12 +123,19 @@ export default function Room() {
                         advanceToVoting();
                     } else if (room.status === 'voting') {
                         resolveRound();
+                    } else if (room.status === 'sd_lock_in') {
+                        resolveSDRound();
+                    } else if (room.status === 'sd_resolution') {
+                        startInterrogation();
+                    } else if (room.status === 'sd_interrogation') {
+                        // start next round
+                        startSDRound();
                     }
                 }
             }
         }, 1000);
         return () => clearInterval(interval);
-    }, [room, me, advanceToVoting, resolveRound]);
+    }, [room, me, advanceToVoting, resolveRound, resolveSDRound, startInterrogation, startSDRound]);
 
     if (!me || !room) return (
         <div className="min-h-[100dvh] flex items-center justify-center bg-slate-950 text-white">Loading Lobby...</div>
@@ -112,7 +170,14 @@ export default function Room() {
 
     // VIEWS
     if (room.status === 'finished') {
-        const isVictory = (room.winner === 'players' && me.role === 'player') || (room.winner === 'jacks' && me.role === 'jack');
+        const isVictory = room.gameType === 'shadow-duel' ?
+            (room.winner === 'humans' && me.sdRole === 'human') || (room.winner === 'zombies' && me.sdRole === 'zombie') :
+            (room.winner === 'players' && me.role === 'player') || (room.winner === 'jacks' && me.role === 'jack');
+
+        const messageStr = room.gameType === 'shadow-duel' ?
+            (room.winner === 'humans' ? 'THE HUMANS SURVIVED' : room.winner === 'zombies' ? 'THE INFECTION SPREAD' : 'NO ONE SURVIVED') :
+            (room.winner === 'players' ? 'THE PLAYERS SURVIVED' : 'THE JACK OF HEARTS WINS');
+
         return (
             <div className="flex flex-col items-center justify-center min-h-[100dvh] p-6 bg-slate-950">
                 <div className={`bg-white/5 backdrop-blur-xl p-8 rounded-3xl text-center border shadow-2xl max-w-md w-full animate-in zoom-in-95 duration-1000 ${isVictory ? 'border-green-500/30 shadow-[0_0_50px_rgba(34,197,94,0.15)]' : 'border-red-500/30 shadow-[0_0_50px_rgba(220,38,38,0.15)]'}`}>
@@ -120,7 +185,7 @@ export default function Room() {
                         {isVictory ? 'Victory' : 'Game Over'}
                     </h1>
                     <p className={`text-lg sm:text-xl mb-10 font-black uppercase tracking-[0.2em] ${isVictory ? 'text-green-400' : 'text-red-400'}`}>
-                        {room.winner === 'players' ? 'THE PLAYERS SURVIVED' : 'THE JACK OF HEARTS WINS'}
+                        {messageStr}
                     </p>
                     <div className="space-y-4">
                         {me.isHost ? (
@@ -132,6 +197,128 @@ export default function Room() {
                 </div>
             </div>
         );
+    }
+
+    if (room.gameType === 'shadow-duel' && room.status.startsWith('sd_')) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[100dvh] p-6 bg-slate-950 relative">
+                {!me.isDead && <div className="absolute top-8 sm:top-12 text-4xl sm:text-6xl font-black font-mono text-purple-500 tracking-widest animate-pulse">{timeLeft}s</div>}
+
+                {me.isDead ? (
+                    <DeathScreen isShadowDuel />
+                ) : (
+                    <div className="w-full text-center space-y-4 sm:space-y-6 mt-16 animate-in fade-in slide-in-from-bottom-8 duration-700">
+                        {room.status === 'sd_lock_in' && (
+                            <div className="max-w-7xl mx-auto px-4">
+                                <h2 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-[0.2em] mb-2">Select Card</h2>
+                                <p className="text-slate-400 uppercase tracking-widest text-xs sm:text-sm mb-6 sm:mb-8">Choose one to play blindly against an unknown opponent.</p>
+
+                                {me.sdLockedCard ? (
+                                    <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex flex-col items-center justify-center min-h-[50vh]">
+                                        <ShadowDuelCard cardId={me.sdLockedCard} disabled />
+                                        <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest mt-6 text-green-400 opacity-70">Awaiting match outcome...</span>
+                                        <p className="text-slate-500 text-xs mt-2 uppercase tracking-widest">Random card chosen if time expires</p>
+                                    </motion.div>
+                                ) : (
+                                    <FanHand
+                                        cards={me.sdCards || []}
+                                        onSelect={(card) => lockInCard(card)}
+                                    />
+                                )}
+                            </div>
+                        )}
+
+                        {room.status === 'sd_resolution' && (
+                            <div className="space-y-6 mt-16 max-w-4xl w-full mx-auto">
+                                {me.sdDuelResult?.type === 'isolated' && (
+                                    <motion.h2 initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-2xl font-black text-slate-400 uppercase tracking-[0.2em] mb-2">{me.sdDuelResult.message}</motion.h2>
+                                )}
+                                {me.sdDuelResult?.type !== 'isolated' && (
+                                    <div className="flex flex-col items-center">
+                                        <h2 className="text-2xl sm:text-3xl font-black text-purple-400 uppercase tracking-[0.2em] mb-4">
+                                            Combat Resolution
+                                        </h2>
+
+                                        {me.sdDuelResult?.opponentRole && (
+                                            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="mb-4 text-cyan-400 font-bold bg-cyan-900/30 px-4 py-2 border border-cyan-500 rounded-lg">
+                                                RECON SUCCESS: Opponent was {me.sdDuelResult.opponentName} ({me.sdDuelResult.opponentRole})
+                                            </motion.div>
+                                        )}
+
+                                        <div className="flex justify-center gap-6 sm:gap-12 items-center mb-8">
+                                            <motion.div initial={{ x: -100, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ type: "spring" }} className="flex flex-col items-center">
+                                                <span className="text-slate-400 uppercase tracking-widest text-[10px] sm:text-xs mb-4 font-black">You Played</span>
+                                                <ShadowDuelCard cardId={me.sdDuelResult?.cardYouPlayed === 'None' ? 'None' : me.sdDuelResult?.cardYouPlayed || 'Shotgun'} disabled className="scale-90 sm:scale-100" />
+                                            </motion.div>
+
+                                            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.3 }} className="text-2xl sm:text-4xl font-black text-white/20 uppercase">
+                                                VS
+                                            </motion.div>
+
+                                            <motion.div initial={{ x: 100, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ type: "spring", delay: 0.5 }} className="flex flex-col items-center">
+                                                <span className="text-slate-400 uppercase tracking-widest text-[10px] sm:text-xs mb-4 font-black">Target Played</span>
+                                                {me.sdDuelResult?.cardPlayedAgainstYou === 'None' ? (
+                                                    <div className="w-24 h-32 text-slate-600 font-bold uppercase tracking-widest flex items-center justify-center border-2 border-dashed border-white/10 rounded-xl">Burned</div>
+                                                ) : (
+                                                    <ShadowDuelCard cardId={me.sdDuelResult?.cardPlayedAgainstYou} disabled className="scale-90 sm:scale-100" />
+                                                )}
+                                            </motion.div>
+                                        </div>
+
+                                        <div className="h-16 flex items-center justify-center">
+                                            {me.sdDuelResult?.type === 'infected_or_cured' && <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-lg text-green-400 font-bold animate-pulse">Identity Shifted. Check your new hand.</motion.div>}
+                                            {me.sdDuelResult?.type === 'shot' && <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-xl text-red-500 font-black animate-pulse uppercase tracking-widest">Lethal force deployed.</motion.div>}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {room.status === 'sd_interrogation' && (
+                            <div className="space-y-6 mt-10 max-w-4xl w-full mx-auto">
+                                <h2 className="text-3xl sm:text-4xl font-black text-red-400 uppercase tracking-[0.2em] mb-2">Interrogation</h2>
+                                <p className="text-slate-400 uppercase tracking-widest text-xs sm:text-sm mb-6 sm:mb-8">Analyze targets. Plan your strike. Maintain deception.</p>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 text-left">
+                                    <div className="lg:col-span-1 border border-white/10 bg-white/5 rounded-2xl p-6 h-fit bg-gradient-to-b flex flex-col items-center">
+                                        <div className="text-xs text-slate-500 uppercase tracking-[0.3em] font-black mb-6 w-full text-center">Your Identity</div>
+                                        <motion.div
+                                            initial={{ scale: 0.8, opacity: 0 }}
+                                            animate={{ scale: 1, opacity: 1 }}
+                                            className={cn(
+                                                "w-32 h-32 rounded-full border-4 flex items-center justify-center mb-4 shadow-2xl",
+                                                me.sdRole === 'zombie' ? "border-green-500 bg-green-500/20 shadow-green-500/50" : "border-blue-500 bg-blue-500/20 shadow-blue-500/50"
+                                            )}
+                                        >
+                                            <span className={cn("text-3xl font-black tracking-widest uppercase", me.sdRole === 'zombie' ? 'text-green-500' : 'text-blue-400')}>{me.sdRole}</span>
+                                        </motion.div>
+                                    </div>
+
+                                    <div className="lg:col-span-2 space-y-6">
+                                        <div className="border border-white/10 bg-white/5 rounded-2xl p-6">
+                                            <div className="text-xs text-slate-500 uppercase tracking-[0.3em] font-black mb-4">Your Hand</div>
+                                            <FanHand cards={me.sdCards || []} disabled />
+                                        </div>
+
+                                        <div className="border border-white/10 bg-white/5 rounded-2xl p-6">
+                                            <div className="text-xs text-slate-500 uppercase tracking-[0.3em] font-black mb-4">Alive Operatives</div>
+                                            <div className="flex flex-wrap gap-3">
+                                                {Object.values(room.players).filter(p => !p.isDead && p.isApproved).map(p => (
+                                                    <div key={p.id} className="bg-white/10 border border-white/5 px-4 py-2 rounded-full flex items-center gap-3">
+                                                        <div className="w-2 h-2 rounded-full bg-slate-400 animate-pulse" />
+                                                        <span className="font-bold text-slate-200">{p.name} {p.id === me.id ? '(You)' : ''}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        )
     }
 
     if (room.status === 'voting') {
@@ -349,11 +536,11 @@ export default function Room() {
                 {me.isHost ? (
                     <div className="mt-8 space-y-3">
                         <button
-                            onClick={startGame}
-                            disabled={approvedJoiners.length < 4}
+                            onClick={room.gameType === 'shadow-duel' ? startSDGame : startGame}
+                            disabled={approvedJoiners.length < (room.gameType === 'shadow-duel' ? 2 : 4)}
                             className="w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 px-4 rounded-xl transition-all uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:shadow-[0_0_30px_rgba(220,38,38,0.6)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-red-600 disabled:hover:shadow-[0_0_20px_rgba(220,38,38,0.4)]"
                         >
-                            {approvedJoiners.length < 4 ? `Need ${4 - approvedJoiners.length} More` : 'Commence Event'}
+                            {approvedJoiners.length < (room.gameType === 'shadow-duel' ? 2 : 4) ? `Need ${(room.gameType === 'shadow-duel' ? 2 : 4) - approvedJoiners.length} More` : 'Commence Event'}
                         </button>
                         <button onClick={cancelGame} className="w-full bg-transparent border border-white/10 text-slate-400 hover:bg-white/5 hover:text-white font-bold py-4 px-4 rounded-xl transition-colors uppercase tracking-[0.2em] text-sm">Dismantle Room</button>
                     </div>
@@ -366,14 +553,16 @@ export default function Room() {
     );
 }
 
-function DeathScreen() {
+function DeathScreen({ isShadowDuel }: { isShadowDuel?: boolean }) {
     const { leaveGame } = useGame();
     const navigate = useNavigate();
     return (
         <div className="flex flex-col items-center justify-center p-6 sm:p-8 text-center animate-in fade-in zoom-in-95 duration-1000 mt-10 sm:mt-20">
             <Skull className="w-24 h-24 sm:w-32 sm:h-32 text-red-600 mb-6 sm:mb-8 drop-shadow-[0_0_25px_rgba(220,38,38,0.8)] animate-pulse" />
             <h2 className="text-2xl sm:text-4xl font-black text-white uppercase tracking-[0.2em] sm:tracking-[0.3em] mb-4">You Are Dead</h2>
-            <p className="text-slate-400 mb-8 sm:mb-10 max-w-sm text-sm sm:text-lg leading-relaxed font-medium">Your collar has detonated. You failed to identify your suit.</p>
+            <p className="text-slate-400 mb-8 sm:mb-10 max-w-sm text-sm sm:text-lg leading-relaxed font-medium">
+                {isShadowDuel ? 'You succumbed to lethal force.' : 'Your collar has detonated. You failed to identify your suit.'}
+            </p>
             <button onClick={() => { leaveGame(); sessionStorage.removeItem('paranoia_id'); navigate('/'); }} className="border border-white/20 hover:bg-red-900/40 hover:text-red-400 hover:border-red-500/50 px-6 sm:px-8 py-3 rounded-xl uppercase text-[10px] sm:text-xs font-black tracking-[0.2em] text-slate-400 transition-all active:scale-95">Return to Home</button>
         </div>
     );
